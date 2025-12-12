@@ -2,35 +2,50 @@ import { Link } from 'react-router-dom';
 import { useProperty } from '../../context/PropertyContext';
 import { formatPrice } from '../../utils/formatters';
 
+const BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, '') || 'http://localhost:5000';
+
+const getImageUrl = (path) => {
+  if (!path) {
+    return 'https://via.placeholder.com/600x400?text=No+Image';
+  }
+  if (path.startsWith('http')) {
+    return path;
+  }
+  // path like /uploads/properties/xyz.jpg
+  return `${BASE_URL}${path}`;
+};
+
 const PropertyCard = ({ property }) => {
   const { savedProperties, toggleSave } = useProperty();
-  const isSaved = savedProperties.includes(property.id);
+  const isSaved = savedProperties.includes(property._id);
 
   const handleSaveClick = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    toggleSave(property.id);
+    toggleSave(property._id);
   };
+
+  const mainImage = getImageUrl(property.images?.[0]);
 
   return (
     <Link
-      to={`/properties/${property.id}`}
+      to={`/properties/${property._id}`}
       className="group bg-surface rounded-xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden"
     >
       {/* Image */}
       <div className="relative h-56 overflow-hidden">
         <img
-          src={property.images[0]}
+          src={mainImage}
           alt={property.title}
           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
         />
-        
+
         {/* Badges */}
         <div className="absolute top-3 left-3 flex gap-2">
           <span className="px-3 py-1 bg-accent text-white text-xs font-semibold rounded-full">
             {property.dealType === 'sale' ? 'For Sale' : 'For Rent'}
           </span>
-          {property.listedBy.verified && (
+          {property.listedBy?.verified && (
             <span className="px-3 py-1 bg-green-500 text-white text-xs font-semibold rounded-full flex items-center gap-1">
               <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                 <path
@@ -50,7 +65,9 @@ const PropertyCard = ({ property }) => {
           className="absolute top-3 right-3 w-9 h-9 bg-surface rounded-full flex items-center justify-center shadow-md hover:bg-beige-light transition-colors"
         >
           <svg
-            className={`w-5 h-5 ${isSaved ? 'fill-red-500 text-red-500' : 'text-textc-secondary'}`}
+            className={`w-5 h-5 ${
+              isSaved ? 'fill-red-500 text-red-500' : 'text-textc-secondary'
+            }`}
             fill={isSaved ? 'currentColor' : 'none'}
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -89,7 +106,7 @@ const PropertyCard = ({ property }) => {
               strokeLinecap="round"
               strokeLinejoin="round"
               strokeWidth={2}
-              d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+              d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 111.314 0z"
             />
             <path
               strokeLinecap="round"
@@ -98,7 +115,9 @@ const PropertyCard = ({ property }) => {
               d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
             />
           </svg>
-          <span className="line-clamp-1">{property.locality}, {property.city}</span>
+          <span className="line-clamp-1">
+            {property.locality}, {property.city}
+          </span>
         </div>
 
         {/* Stats */}
@@ -141,7 +160,9 @@ const PropertyCard = ({ property }) => {
         {/* Listed By */}
         <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
           <div className="flex items-center text-sm text-textc-secondary">
-            <span className="font-medium capitalize">{property.listedBy.role}</span>
+            <span className="font-medium capitalize">
+              {property.listedBy?.role}
+            </span>
           </div>
           <div className="flex items-center text-sm text-gray-500">
             <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -158,7 +179,7 @@ const PropertyCard = ({ property }) => {
                 d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
               />
             </svg>
-            <span>{property.stats.views}</span>
+            <span>{property.stats?.views ?? 0}</span>
           </div>
         </div>
       </div>

@@ -2,15 +2,17 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useProperty } from '../context/PropertyContext';
 import { useAuth } from '../context/AuthContext';
+import { propertyAPI } from '../services/api';
 import PropertyGallery from '../components/property/PropertyGallery';
 import ReviewsList from '../components/property/ReviewsList';
 import AddReviewModal from '../components/property/AddReviewModal';
 import { formatPrice, calculateAverageRating } from '../utils/formatters';
 
 const PropertyDetails = () => {
-  const { id } = useParams();
+  const { id } = useParams(); // MongoDB _id in URL
   const navigate = useNavigate();
-  const { properties, incrementViews, addReview, toggleSave, savedProperties } = useProperty();
+
+  const { addReview, toggleSave, savedProperties } = useProperty();
   const { isAuthenticated, user } = useAuth();
 
   const [property, setProperty] = useState(null);
@@ -29,26 +31,36 @@ const PropertyDetails = () => {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
 
+  // ✅ Fetch property from backend by ID
   useEffect(() => {
-    const foundProperty = properties.find((p) => p.id === id);
-    if (foundProperty) {
-      setProperty(foundProperty);
-      incrementViews(id);
-      window.scrollTo({ top: 0, behavior: 'instant' });
-    } else {
-      navigate('/properties');
-    }
-  }, [id]); // intentionally only id to avoid loops
+    const fetchProperty = async () => {
+      try {
+        const { data } = await propertyAPI.getOne(id); // GET /api/properties/:id
+        if (!data?.success || !data.property) {
+          navigate('/properties');
+          return;
+        }
+        setProperty(data.property);
+        window.scrollTo({ top: 0, behavior: 'instant' });
+      } catch (error) {
+        console.error('Error loading property:', error);
+        navigate('/properties');
+      }
+    };
+
+    fetchProperty();
+  }, [id, navigate]);
 
   const handleAddReview = (reviewData) => {
     const newReview = {
-      userId: user?.id || 'guest',
+      userId: user?._id || 'guest',
       userName: user?.name || 'Guest User',
       userAvatar: user?.avatar || 'https://i.pravatar.cc/150?img=1',
       rating: reviewData.rating,
       comment: reviewData.comment,
       date: new Date().toISOString(),
     };
+    // demo only – your addReview in context is stub
     addReview(id, newReview);
   };
 
@@ -57,7 +69,7 @@ const PropertyDetails = () => {
       navigate('/auth');
       return;
     }
-    toggleSave(id);
+    toggleSave(id); // backend uses /properties/:id/save
   };
 
   const handleChatOpen = () => {
@@ -66,7 +78,6 @@ const PropertyDetails = () => {
       return;
     }
 
-    // initialise chat with a welcome message once
     if (chatMessages.length === 0 && property?.listedBy?.name) {
       setChatMessages([
         {
@@ -87,21 +98,15 @@ const PropertyDetails = () => {
 
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    // add user message
-    setChatMessages((prev) => [
-      ...prev,
-      { from: 'me', text, time },
-    ]);
-
+    setChatMessages((prev) => [...prev, { from: 'me', text, time }]);
     setChatInput('');
 
-    // simple auto-reply for demo
     setTimeout(() => {
       setChatMessages((prev) => [
         ...prev,
         {
           from: 'owner',
-          text: 'Thanks for your message. This is a demo chat, actual replies will come when backend is connected.',
+          text: 'Thanks for your message. This is a demo chat, Replies will come when they are active.',
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
@@ -124,7 +129,6 @@ const PropertyDetails = () => {
       return;
     }
 
-    // later this will call API; for now just demo
     console.log('Quick enquiry submitted:', {
       propertyId: id,
       ...enquiry,
@@ -147,8 +151,10 @@ const PropertyDetails = () => {
     );
   }
 
-  const isSaved = savedProperties.includes(property.id);
-  const avgRating = calculateAverageRating(property.reviews);
+  // ✅ Use backend IDs + safe fallbacks
+  const isSaved = savedProperties.includes(id); // savedProperties contains propertyId
+  const reviews = property.reviews || [];
+  const avgRating = calculateAverageRating(reviews);
 
   return (
     <div className="min-h-screen bg-beige-light py-8">
@@ -168,7 +174,7 @@ const PropertyDetails = () => {
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-8">
             {/* Gallery */}
-            <PropertyGallery images={property.images} />
+            <PropertyGallery images={property.images || []} />
 
             {/* Title and Address */}
             <div>
@@ -181,7 +187,7 @@ const PropertyDetails = () => {
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         strokeWidth={2}
-                        d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                        d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 111.314 0z"
                       />
                       <path
                         strokeLinecap="round"
@@ -193,7 +199,7 @@ const PropertyDetails = () => {
                     <span>{property.address}</span>
                   </div>
                 </div>
-                {property.listedBy.verified && (
+                {property.listedBy?.verified && (
                   <span className="px-4 py-2 bg-green-100 text-green-800 rounded-full text-sm font-semibold flex items-center gap-2">
                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                       <path
@@ -239,7 +245,7 @@ const PropertyDetails = () => {
               </div>
               <div className="text-center">
                 <div className="text-3xl font-bold text-primary mb-1 capitalize">
-                  {property.furnishing.split('-')[0]}
+                  {property.furnishing?.split('-')[0]}
                 </div>
                 <div className="text-textc-secondary text-sm">Furnishing</div>
               </div>
@@ -250,44 +256,53 @@ const PropertyDetails = () => {
               <h2 className="text-2xl font-bold text-textc-primary mb-4">About Property</h2>
               <div className="prose prose-blue max-w-none">
                 <p className="text-gray-700 leading-relaxed mb-4">
-                  This beautiful {property.beds} BHK {property.propertyType.toLowerCase()} is now available for{' '}
-                  {property.dealType} in {property.locality}, {property.city}. Spanning {property.area} square feet,
-                  this property offers modern amenities and excellent connectivity.
+                  {property.description ||
+                    `This beautiful ${property.beds} BHK ${property.propertyType?.toLowerCase()} is available for ${
+                      property.dealType
+                    } in ${property.locality}, ${property.city}. Spanning ${property.area} sqft, this property offers modern amenities and excellent connectivity.`}
                 </p>
-                <h3 className="text-lg font-semibold text-textc-primary mb-3">Property Highlights</h3>
-                <ul className="space-y-2">
-                  {property.highlights.map((highlight, index) => (
-                    <li key={index} className="flex items-start">
-                      <svg
-                        className="w-5 h-5 text-green-500 mr-2 mt-0.5 flex-shrink-0"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                      <span className="text-gray-700">{highlight}</span>
-                    </li>
-                  ))}
-                </ul>
+                {property.highlights && property.highlights.length > 0 && (
+                  <>
+                    <h3 className="text-lg font-semibold text-textc-primary mb-3">Property Highlights</h3>
+                    <ul className="space-y-2">
+                      {property.highlights.map((highlight, index) => (
+                        <li key={index} className="flex items-start">
+                          <svg
+                            className="w-5 h-5 text-green-500 mr-2 mt-0.5 flex-shrink-0"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          <span className="text-gray-700">{highlight}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
               </div>
             </div>
 
             {/* Amenities */}
             <div className="bg-surface rounded-xl p-6 shadow-md">
               <h2 className="text-2xl font-bold text-textc-primary mb-4">Amenities</h2>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {property.amenities.map((amenity, index) => (
-                  <div key={index} className="flex items-center gap-3 p-3 bg-beige-light rounded-lg">
-                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
+              {property.amenities && property.amenities.length > 0 ? (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {property.amenities.map((amenity, index) => (
+                    <div key={index} className="flex items-center gap-3 p-3 bg-beige-light rounded-lg">
+                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                      <span className="text-gray-700 font-medium">{amenity}</span>
                     </div>
-                    <span className="text-gray-700 font-medium">{amenity}</span>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-textc-secondary">No amenities listed.</p>
+              )}
             </div>
 
             {/* Location */}
@@ -314,17 +329,6 @@ const PropertyDetails = () => {
                   </p>
                 </div>
               </div>
-              <div className="text-sm text-textc-secondary">
-                <p className="mb-2">
-                  <strong>Nearby Landmarks:</strong>
-                </p>
-                <ul className="space-y-1 ml-4">
-                  <li>• Metro Station - 2 km</li>
-                  <li>• Shopping Mall - 1.5 km</li>
-                  <li>• School - 800 m</li>
-                  <li>• Hospital - 3 km</li>
-                </ul>
-              </div>
             </div>
 
             {/* Reviews Section */}
@@ -332,7 +336,7 @@ const PropertyDetails = () => {
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <h2 className="text-2xl font-bold text-textc-primary">Ratings & Reviews</h2>
-                  {property.reviews.length > 0 && (
+                  {reviews.length > 0 && (
                     <div className="flex items-center gap-2 mt-2">
                       <div className="flex items-center">
                         {[1, 2, 3, 4, 5].map((star) => (
@@ -355,7 +359,7 @@ const PropertyDetails = () => {
                         ))}
                       </div>
                       <span className="text-textc-secondary">
-                        {avgRating} ({property.reviews.length} reviews)
+                        {avgRating} ({reviews.length} reviews)
                       </span>
                     </div>
                   )}
@@ -369,7 +373,7 @@ const PropertyDetails = () => {
                   </button>
                 )}
               </div>
-              <ReviewsList reviews={property.reviews} />
+              <ReviewsList reviews={reviews} />
             </div>
           </div>
 
@@ -380,14 +384,18 @@ const PropertyDetails = () => {
               <div className="bg-surface rounded-xl p-6 shadow-md">
                 <div className="flex items-center gap-4 mb-4">
                   <img
-                    src={property.listedBy.avatar}
-                    alt={property.listedBy.name}
-                    className="w-16 h-16 rounded-full"
+                    src={property.listedBy?.avatar}
+                    alt={property.listedBy?.name || 'Owner'}
+                    className="w-16 h-16 rounded-full object-cover bg-gray-200"
                   />
                   <div>
-                    <h3 className="font-semibold text-textc-primary">{property.listedBy.name}</h3>
-                    <p className="text-sm text-textc-secondary capitalize">{property.listedBy.role}</p>
-                    {property.listedBy.role === 'broker' && property.listedBy.rating && (
+                    <h3 className="font-semibold text-textc-primary">
+                      {property.listedBy?.name || 'Owner / Broker'}
+                    </h3>
+                    <p className="text-sm text-textc-secondary capitalize">
+                      {property.listedBy?.role || 'owner'}
+                    </p>
+                    {property.listedBy?.role === 'broker' && property.listedBy?.rating && (
                       <div className="flex items-center gap-1 mt-1">
                         <svg className="w-4 h-4 text-yellow-400 fill-current" viewBox="0 0 24 24">
                           <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
@@ -399,10 +407,9 @@ const PropertyDetails = () => {
                 </div>
 
                 <div className="space-y-3">
-                  {showContactDetails ? (
+                  {showContactDetails && property.listedBy?.phone ? (
                     <div className="p-4 bg-beige-dark rounded-lg">
                       <p className="text-sm text-textc-secondary mb-2">Contact Number:</p>
-
                       <a
                         href={`tel:${property.listedBy.phone}`}
                         className="text-lg font-semibold text-primary hover:text-blue-700"
@@ -434,7 +441,7 @@ const PropertyDetails = () => {
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         strokeWidth={2}
-                        d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                        d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
                       />
                     </svg>
                     Chat Now
@@ -528,7 +535,7 @@ const PropertyDetails = () => {
                       </svg>
                       Views
                     </span>
-                    <span className="font-semibold text-textc-primary">{property.stats.views}</span>
+                    <span className="font-semibold text-textc-primary">{property.stats?.views ?? 0}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-textc-secondary flex items-center gap-2">
@@ -542,7 +549,7 @@ const PropertyDetails = () => {
                       </svg>
                       Saves
                     </span>
-                    <span className="font-semibold text-textc-primary">{property.stats.saves}</span>
+                    <span className="font-semibold text-textc-primary">{property.stats?.saves ?? 0}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-textc-secondary flex items-center gap-2">
@@ -556,7 +563,9 @@ const PropertyDetails = () => {
                       </svg>
                       Inquiries
                     </span>
-                    <span className="font-semibold text-textc-primary">{property.stats.inquiries}</span>
+                    <span className="font-semibold text-textc-primary">
+                      {property.stats?.inquiries ?? 0}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -588,14 +597,16 @@ const PropertyDetails = () => {
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
                 <div className="flex items-center gap-3">
                   <img
-                    src={property.listedBy.avatar}
-                    alt={property.listedBy.name}
-                    className="w-10 h-10 rounded-full border border-gray-300"
+                    src={property.listedBy?.avatar}
+                    alt={property.listedBy?.name || 'Owner'}
+                    className="w-10 h-10 rounded-full border border-gray-300 object-cover bg-gray-200"
                   />
                   <div>
-                    <p className="font-semibold text-gray-900">{property.listedBy.name}</p>
+                    <p className="font-semibold text-gray-900">
+                      {property.listedBy?.name || 'Owner / Broker'}
+                    </p>
                     <p className="text-xs text-gray-500 capitalize">
-                      {property.listedBy.role} • {property.city}
+                      {property.listedBy?.role || 'owner'} • {property.city}
                     </p>
                     <p className="text-[11px] text-gray-400 truncate max-w-xs">
                       Regarding: {property.title}
@@ -635,7 +646,9 @@ const PropertyDetails = () => {
                         }`}
                       >
                         <p>{msg.text}</p>
-                        <p className="text-[10px] opacity-70 mt-1 text-right">{msg.time}</p>
+                        <p className="text-[10px] opacity-70 mt-1 text-right">
+                          {msg.time}
+                        </p>
                       </div>
                     </div>
                   ))}
@@ -661,7 +674,7 @@ const PropertyDetails = () => {
                   </button>
                 </div>
                 <p className="text-[10px] text-gray-400 mt-1">
-                  Demo chat only – messages are not saved permanently.
+                  messages are not saved permanently.
                 </p>
               </form>
             </div>

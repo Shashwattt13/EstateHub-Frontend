@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { propertyAPI } from '../services/api';
 import { mockCities, mockAmenities } from '../data/mockData';
 
 const ListProperty = () => {
@@ -11,6 +12,8 @@ const ListProperty = () => {
 
   // toast: { type: 'success' | 'error', message: string } | null
   const [toast, setToast] = useState(null);
+
+  const [submitting, setSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -29,6 +32,9 @@ const ListProperty = () => {
     highlights: '',
     description: '',
   });
+
+  // images (File objects)
+  const [imageFiles, setImageFiles] = useState([]); // min 1, max 3
 
   // ---------- ACCESS CONTROL ----------
   if (!isAuthenticated) {
@@ -92,6 +98,23 @@ const ListProperty = () => {
     }
   };
 
+  // image input change
+  const handleImageChange = (e) => {
+    const files = Array.from(e.target.files || []);
+
+    if (files.length === 0) {
+      setImageFiles([]);
+      return;
+    }
+
+    if (files.length > 3) {
+      showToast('error', 'You can upload a maximum of 3 images.');
+      return;
+    }
+
+    setImageFiles(files);
+  };
+
   // ✅ validate fields of a given step before moving forward / finishing
   const validateStep = (currentStep) => {
     if (currentStep === 1) {
@@ -110,7 +133,7 @@ const ListProperty = () => {
     }
 
     if (currentStep === 4) {
-      // 👇 new: require at least 1 amenity
+      // require at least 1 amenity
       if (formData.amenities.length === 0) return false;
       return true;
     }
@@ -134,7 +157,7 @@ const ListProperty = () => {
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     // final validation on step 4
@@ -143,14 +166,72 @@ const ListProperty = () => {
       return;
     }
 
-    // 👉 here in future you will send formData to backend / context
-    // e.g. addProperty(formData);
+    // image validation
+    if (imageFiles.length === 0) {
+      showToast('error', 'Please upload at least one property image.');
+      return;
+    }
 
-    showToast('success', 'Property listed successfully!');
+    if (imageFiles.length > 3) {
+      showToast('error', 'You can upload a maximum of 3 images.');
+      return;
+    }
 
-    setTimeout(() => {
-      navigate(getDashboardRoute());
-    }, 1500);
+    // Build FormData for multipart/form-data
+    const formDataToSend = new FormData();
+
+    // text fields
+    formDataToSend.append('title', formData.title);
+    formDataToSend.append('price', formData.price);
+    formDataToSend.append('dealType', formData.dealType);
+    formDataToSend.append('propertyType', formData.propertyType);
+    formDataToSend.append('beds', formData.beds);
+    formDataToSend.append('baths', formData.baths);
+    formDataToSend.append('area', formData.area);
+    formDataToSend.append('city', formData.city);
+    formDataToSend.append('locality', formData.locality);
+    formDataToSend.append('address', formData.address);
+    formDataToSend.append('pincode', formData.pincode);
+    formDataToSend.append('furnishing', formData.furnishing);
+    formDataToSend.append('description', formData.description || '');
+
+    // highlights textarea -> backend will split by newline
+    formDataToSend.append('highlights', formData.highlights || '');
+
+    // amenities array (append each)
+    formData.amenities.forEach((amenity) => {
+      formDataToSend.append('amenities', amenity);
+    });
+
+    // images (files)
+    imageFiles.forEach((file) => {
+      formDataToSend.append('images', file);
+    });
+
+    setSubmitting(true);
+
+    try {
+      const { data } = await propertyAPI.create(formDataToSend);
+
+      if (!data?.success) {
+        throw new Error(data?.message || 'Failed to list property');
+      }
+
+      showToast('success', 'Property listed successfully!');
+
+      setTimeout(() => {
+        navigate(getDashboardRoute());
+      }, 1500);
+    } catch (err) {
+      console.error('Error listing property:', err);
+      const msg =
+        err.response?.data?.message ||
+        err.message ||
+        'Something went wrong while listing your property.';
+      showToast('error', msg);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // ---------- UI ----------
@@ -217,7 +298,7 @@ const ListProperty = () => {
             <span className="text-sm text-textc-secondary">Basic Info</span>
             <span className="text-sm text-textc-secondary">Property Details</span>
             <span className="text-sm text-textc-secondary">Location</span>
-            <span className="text-sm text-textc-secondary">Amenities</span>
+            <span className="text-sm text-textc-secondary">Amenities & Photos</span>
           </div>
         </div>
 
@@ -440,29 +521,63 @@ const ListProperty = () => {
             </div>
           )}
 
-          {/* STEP 4: Amenities */}
+          {/* STEP 4: Amenities + Images */}
           {step === 4 && (
             <div className="space-y-6">
-              <h2 className="text-xl font-bold text-textc-primary mb-4">Select Amenities</h2>
+              <h2 className="text-xl font-bold text-textc-primary mb-4">Amenities & Photos</h2>
 
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {mockAmenities.map((amenity) => (
-                  <label key={amenity} className="flex items-center space-x-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      value={amenity}
-                      checked={formData.amenities.includes(amenity)}
-                      onChange={handleChange}
-                      className="w-5 h-5 text-primary border-gray-300 rounded focus:ring-accent"
-                    />
-                    <span className="text-gray-700">{amenity}</span>
-                  </label>
-                ))}
+              {/* Amenities */}
+              <div>
+                <p className="text-sm font-medium text-gray-700 mb-2">
+                  Select Amenities <span className="text-red-500">*</span>
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {mockAmenities.map((amenity) => (
+                    <label key={amenity} className="flex items-center space-x-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        value={amenity}
+                        checked={formData.amenities.includes(amenity)}
+                        onChange={handleChange}
+                        className="w-5 h-5 text-primary border-gray-300 rounded focus:ring-accent"
+                      />
+                      <span className="text-gray-700">{amenity}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
 
-              <div className="bg-beige-dark border border-blue-200 rounded-lg p-4 mt-6">
+              {/* Images */}
+              <div className="mt-4">
+                <h3 className="text-lg font-semibold text-textc-primary mb-2">
+                  Property Photos (min 1, max 3) <span className="text-red-500">*</span>
+                </h3>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleImageChange}
+                  className="block w-full text-sm text-gray-700
+                             file:mr-4 file:py-2 file:px-4
+                             file:rounded-md file:border-0
+                             file:text-sm file:font-semibold
+                             file:bg-[#1B5E20] file:text-white
+                             hover:file:bg-[#2E7D32]"
+                />
+                {imageFiles.length > 0 && (
+                  <p className="text-sm text-textc-secondary mt-2">
+                    Selected {imageFiles.length} image(s).
+                  </p>
+                )}
+                <p className="text-xs text-gray-500 mt-1">
+                  Supported formats: JPG, PNG, WEBP. Max 3 images.
+                </p>
+              </div>
+
+              <div className="bg-beige-dark border border-blue-200 rounded-lg p-4 mt-4">
                 <p className="text-sm text-blue-800">
-                  <strong>Note:</strong> You can upload photos after listing the property from your dashboard.
+                  <strong>Note:</strong> You can always edit details or update photos later from your
+                  dashboard.
                 </p>
               </div>
             </div>
@@ -475,6 +590,7 @@ const ListProperty = () => {
                 type="button"
                 onClick={handleBack}
                 className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-beige-light transition-colors font-medium"
+                disabled={submitting}
               >
                 Back
               </button>
@@ -493,9 +609,10 @@ const ListProperty = () => {
             ) : (
               <button
                 type="submit"
-                className="ml-auto px-6 py-3 bg-[#1B5E20] text-white rounded-lg hover:bg-[#2E7D32] shadow-sm transition-colors font-medium"
+                disabled={submitting}
+                className="ml-auto px-6 py-3 bg-[#1B5E20] text-white rounded-lg hover:bg-[#2E7D32] shadow-sm transition-colors font-medium disabled:opacity-70 disabled:cursor-not-allowed"
               >
-                Done
+                {submitting ? 'Listing...' : 'Done'}
               </button>
             )}
           </div>
