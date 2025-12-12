@@ -131,5 +131,5 @@ npm run build
 
 **Shashwat Singh**
 shashwatsingh.6912@gmail.com
-Frontend of the EstateHub MERN project.
+
 
