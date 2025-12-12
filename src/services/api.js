@@ -4,7 +4,7 @@ const API_URL = 'http://localhost:5000/api';
 
 const api = axios.create({
   baseURL: API_URL,
-  // ❌ do NOT set Content-Type here globally
+  // do NOT set Content-Type here globally
 });
 
 // Add token to requests
