@@ -3,8 +3,7 @@ import axios from 'axios';
 const API_URL = 'https://estatehub-backend-87mw.onrender.com/';
 
 const api = axios.create({
-  baseURL: API_URL,
-  // do NOT set Content-Type here globally
+  baseURL: `${import.meta.env.VITE_API_URL}/api`,  // do NOT set Content-Type here globally
 });
 
 // Add token to requests
