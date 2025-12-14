@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useProperty } from '../context/PropertyContext';
-import PropertyGrid from '../components/property/PropertyGrid';
-import PropertyFilters from '../components/property/PropertyFilters';
+import PropertyGrid from '../components/property/PropertyGrid.jsx';
+import PropertyFilters from '../components/property/PropertyFilters.jsx';
 
 const Properties = () => {
   const { properties } = useProperty();
